@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io/fs"
 	"log"
 	"os"
 	"path"
@@ -9,6 +10,7 @@ import (
 	"sort"
 
 	"github.com/AlecAivazis/survey/v2"
+	"github.com/dustin/go-humanize"
 	"github.com/olekukonko/tablewriter"
 	"github.com/urfave/cli/v2"
 )
@@ -27,7 +29,7 @@ var app = &cli.App{
 		&cli.IntFlag{
 			Name:    "number",
 			Aliases: []string{"n"},
-			Usage:   "number of files to delete if positive, or to keep if nagative; ALL matching files will be deleted if set to 0",
+			Usage:   "number of files to delete if positive, or to keep if negative; ALL matching files will be deleted if set to 0",
 			Value:   0,
 		},
 		&cli.StringFlag{
@@ -101,10 +103,39 @@ var app = &cli.App{
 
 		confirm := false
 		if !ctx.Bool("yes") {
-			survey.AskOne(&survey.Confirm{
+			ans := "No"
+			survey.AskOne(&survey.Select{
 				Message: "All files above will be deleted, continue?",
-				Default: false,
-			}, &confirm)
+				Options: []string{"Yes", "No", "Pick"},
+				Default: "No",
+			}, &ans)
+			switch ans {
+			case "Yes":
+				confirm = true
+			case "No":
+				confirm = false
+			case "Pick":
+				{
+					mapSel := make(map[string]fs.FileInfo, len(arrMatch))
+					arrSel := make([]string, 0, len(arrMatch))
+					for _, fi := range arrMatch {
+						mapSel[fi.Name()] = fi
+						arrSel = append(arrSel, fi.Name())
+					}
+					arrAns := make([]string, 0, len(arrMatch))
+					survey.AskOne(&survey.MultiSelect{
+						Message: "Select files to delete",
+						Options: arrSel,
+						Default: arrSel,
+					}, &arrAns)
+					arrMatch = make([]os.FileInfo, 0, len(arrAns))
+					for _, ans := range arrAns {
+						arrMatch = append(arrMatch, mapSel[ans])
+					}
+
+					confirm = len(arrMatch) > 0
+				}
+			}
 		} else {
 			confirm = true
 		}
@@ -182,9 +213,12 @@ func printResult(r []os.FileInfo) {
 		if i >= truncateLen {
 			break
 		}
-		table.Append([]string{fi.Name(), fmt.Sprintf("%d", fi.Size()), fi.ModTime().Format("2006-01-02 15:04:05")})
+		table.Append([]string{
+			fi.Name(),
+			humanize.IBytes(uint64(fi.Size())),
+			fi.ModTime().Format("2006-01-02 15:04:05")})
 	}
-	table.SetAlignment(tablewriter.ALIGN_LEFT)
+	table.SetAlignment(tablewriter.ALIGN_RIGHT)
 
 	hint := fmt.Sprintf("Total: %d file(s)", len(r))
 	if len(r) > truncateLen {
