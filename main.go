@@ -209,18 +209,22 @@ func printResult(r []os.FileInfo) {
 	table.SetRowSeparator("")
 	table.SetHeaderLine(false)
 
+	var totalSize uint64
+
 	for i, fi := range r {
+		size := uint64(fi.Size())
+		totalSize += size
 		if i >= truncateLen {
-			break
+			continue
 		}
 		table.Append([]string{
 			fi.Name(),
-			humanize.IBytes(uint64(fi.Size())),
+			humanize.IBytes(size),
 			fi.ModTime().Format("2006-01-02 15:04:05")})
 	}
 	table.SetAlignment(tablewriter.ALIGN_RIGHT)
 
-	hint := fmt.Sprintf("Total: %d file(s)", len(r))
+	hint := fmt.Sprintf("Total: %d file(s), %s", len(r), humanize.IBytes(totalSize))
 	if len(r) > truncateLen {
 		hint = fmt.Sprintf("Showing first %d files only, %s", truncateLen, hint)
 	}
